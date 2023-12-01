@@ -14,8 +14,19 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Air files
+notes/.air.toml
+auth/.air.toml
+auth/tmp/
+notes/tmp/
+
 # Dependency directories (remove the comment below to include it)
-# vendor/
+notes/vendor/
+auth/vendor/
 
 # Go workspace file
 go.work
+
+# Env and private files
+.env
+X509-cert-5068675552043678029.pem
