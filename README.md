@@ -20,8 +20,8 @@ Date        time.Time          `bson:"date"`
 
 ## User API Documentation
 
-- The user API is tied directly to a frontend html form, so I'm not sure it can be called by a curl command efficiently
-- Will probably refactor this to work with JSON body requests
+[] Integrate Json body requests
+[] Complete Authentication for client
 
 ### User Schema
 ```
