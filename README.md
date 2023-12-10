@@ -20,8 +20,8 @@ Date        time.Time          `bson:"date"`
 
 ## User API Documentation
 
-[] Integrate Json body requests
-[] Complete Authentication for client
+- [ ] Integrate Json body requests
+- [ ] Complete Authentication for client
 
 ### User Schema
 ```
