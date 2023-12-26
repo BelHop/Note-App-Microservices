@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -16,22 +19,33 @@ import (
 )
 
 type User struct {
-	username    string `bson:"username"`
-	password    string `bson:"username"`
-	email       string `bson:"email"`
+	Username    string `bson:"username"`
+	Password    string `bson:"password"`
+	Email       string `bson:"email"`
 	DateOfBirth string `bson:"date of birth"`
 }
 
 type SignIn struct {
-	username string `bson:"username"`
-	password string `bson:"password"`
+	Username string `bson:"username"`
+	Password string `bson:"password"`
 }
 
 func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
-	r.Post("/signup", SignUpHandler)
-	r.Post("/signin", SignInHandler)
+	r.Route("/auth", func(r chi.Router) {
+		r.Use(cors.Handler(cors.Options{
+			AllowedOrigins: []string{"https://localhost:5173", "http://localhost:5173"},
+			// AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
+			AllowedMethods:   []string{"POST"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+			ExposedHeaders:   []string{"Link"},
+			AllowCredentials: false,
+			MaxAge:           300,
+		}))
+		r.Post("/signup", SignUpHandler)
+		r.Post("/signin", SignInHandler)
+	})
 	r.Delete("/delete", DeleteUser)
 	http.ListenAndServe(":3001", r)
 }
@@ -43,14 +57,16 @@ func SignUpHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatal("Could not load env variable")
 	}
 
-	user, password, email, DateOfBirth := r.PostFormValue("username"), r.PostFormValue("password"), r.PostFormValue("email"), r.PostFormValue("DateOfBirth")
-
-	u := User{
-		username:    user,
-		password:    password,
-		email:       email,
-		DateOfBirth: DateOfBirth,
-	}
+	// user, password, email, DateOfBirth := r.PostFormValue("username"), r.PostFormValue("password"), r.PostFormValue("email"), r.PostFormValue("DateOfBirth")
+	//
+	// u := User{
+	// 	Username:    user,
+	// 	Password:    password,
+	// 	Email:       email,
+	// 	DateOfBirth: DateOfBirth,
+	// }
+	var u User
+	json.NewDecoder(r.Body).Decode(&u)
 
 	uri := os.Getenv("URI")
 	serverAPIOptions := options.ServerAPI(options.ServerAPIVersion1)
@@ -69,17 +85,8 @@ func SignUpHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
-	cookie := http.Cookie{
-		Name:     "Authentication",
-		Value:    u.username,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-	}
+	w.Header().Set("Authorization", JWTcreate(u.Username, u.Password))
 
-	http.SetCookie(w, &cookie)
-
-	w.Write([]byte(fmt.Sprintf("User '%s' created!", u.username)))
 }
 
 func SignInHandler(w http.ResponseWriter, r *http.Request) {
@@ -89,10 +96,9 @@ func SignInHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatal("Could not load env variable")
 	}
 
-	var u User
-	user, password := r.PostFormValue("username"), r.PostFormValue("password")
-	filter := bson.D{{Key: "username", Value: user}, {Key: "password", Value: password}}
-
+	var u SignIn
+	json.NewDecoder(r.Body).Decode(&u)
+	filter := bson.D{{Key: "username", Value: u.Username}, {Key: "password", Value: u.Password}}
 	uri := os.Getenv("URI")
 	serverAPIOptions := options.ServerAPI(options.ServerAPIVersion1)
 
@@ -104,20 +110,12 @@ func SignInHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer client.Disconnect(ctx)
 	collection := client.Database("NotesApp").Collection("Users")
-
 	c := collection.FindOne(ctx, filter)
-	c.Decode(&u)
-
-	cookie := http.Cookie{
-		Name:     "Authentication",
-		Value:    u.username,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
+	if c.Err() != nil {
+		w.Write([]byte("No matching documents\n u"))
 	}
-
-	http.SetCookie(w, &cookie)
-	w.Write([]byte("You're logged in!"))
+	c.Decode(&u)
+	w.Header().Set("Authorization", JWTcreate(u.Username, u.Password))
 }
 
 // TODO: Make the following code work with the frontend of the service/implement an update function for users
@@ -166,4 +164,10 @@ func DeleteUser(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 	w.Write([]byte(fmt.Sprintf("Successfully deleted account!")))
+}
+
+func JWTcreate(username, password string) string {
+	token := jwtauth.New("HS256", []byte("authentic"), nil)
+	_, string, _ := token.Encode(map[string]interface{}{"username": username, "password": password})
+	return string
 }
